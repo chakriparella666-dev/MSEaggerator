@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 require('dotenv').config();
 
-const uri = process.env.MONGODB_URI || 'mongodb://localhost:27017/loginpage';
+const uri = process.env.MONGODB_URI || 'mongodb://localhost:27018/loginpage';
 
 mongoose.connect(uri)
     .then(async () => {

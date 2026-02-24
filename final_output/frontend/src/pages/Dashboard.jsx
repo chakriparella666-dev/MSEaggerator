@@ -21,7 +21,6 @@ const ORDER_STEPS = [
 const Dashboard = () => {
     const user = JSON.parse(localStorage.getItem('user') || '{}');
     const [orders, setOrders] = useState([]);
-    const [mses, setMses] = useState([]);
     const [loading, setLoading] = useState(true);
     const [form, setForm] = useState({ buyerName: '', product: '', quantityKg: '', location: '' });
     const [submitting, setSubmitting] = useState(false);
@@ -35,27 +34,19 @@ const Dashboard = () => {
         } catch { /* backend may not be running */ }
     }, []);
 
-    const fetchMses = useCallback(async () => {
-        try {
-            const { data } = await axios.get(`${API}/mses`);
-            setMses(data);
-        } catch { /* backend may not be running */ }
-    }, []);
-
     const fetchData = useCallback(async () => {
         setLoading(true);
-        await Promise.all([fetchOrders(), fetchMses()]);
+        await fetchOrders();
         setLoading(false);
-    }, [fetchOrders, fetchMses]);
+    }, [fetchOrders]);
 
     useEffect(() => {
         fetchData();
         const interval = setInterval(() => {
             fetchOrders();
-            fetchMses();
         }, 5000);
         return () => clearInterval(interval);
-    }, [fetchData, fetchOrders, fetchMses]);
+    }, [fetchData, fetchOrders]);
 
     const handlePlace = async (e) => {
         e.preventDefault();
@@ -104,9 +95,6 @@ const Dashboard = () => {
                     <div className="tab-nav">
                         <button className={`tab-btn ${tab === 'orders' ? 'active' : ''}`} onClick={() => setTab('orders')}>
                             Orders ({orders.length})
-                        </button>
-                        <button className={`tab-btn ${tab === 'mses' ? 'active' : ''}`} onClick={() => setTab('mses')}>
-                            Registered MSEs ({mses.length})
                         </button>
                         <button className={`tab-btn ${tab === 'place' ? 'active' : ''}`} onClick={() => setTab('place')}>
                             Place New Order
@@ -196,37 +184,6 @@ const Dashboard = () => {
                                             {order.assignedMSEs?.length > 0 && (
                                                 <p className="order-mses">🏭 Assigned MSEs: {order.assignedMSEs.join(', ')}</p>
                                             )}
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-                    )}
-                    {/* MSEs List */}
-                    {tab === 'mses' && (
-                        <div>
-                            {loading ? (
-                                <p className="empty-msg">Loading MSEs...</p>
-                            ) : mses.length === 0 ? (
-                                <div className="empty-msg">
-                                    No MSEs registered yet.
-                                </div>
-                            ) : (
-                                <div className="orders-list">
-                                    {mses.map(mse => (
-                                        <div key={mse._id} className="order-card">
-                                            <div className="order-top">
-                                                <div>
-                                                    <span className="order-buyer">{mse.name}</span>
-                                                    <span className="order-product"> · {mse.product} · {mse.district}</span>
-                                                </div>
-                                                <div className="order-actions">
-                                                    <span className="status-badge" style={{ background: '#f1f5f9', color: '#475569' }}>
-                                                        {mse.capacityKg}kg Capacity
-                                                    </span>
-                                                </div>
-                                            </div>
-                                            <p className="order-mses">⭐ Rating: {mse.rating} · Available: {mse.availableKg}kg</p>
                                         </div>
                                     ))}
                                 </div>

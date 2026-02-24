@@ -7,15 +7,21 @@ const API = 'http://localhost:5000/api/dashboard';
 const ORDER_STEPS = [
     'Order Placed', 'AI Matching', 'MSEs Notified',
     'Production', 'Pickup Arranged', 'Delivered', 'Payment Done', 'Subsidy Applied'
-];
-
-
-
-
+]; const STATUS_COLOR = {
+    'Order Placed': '#2563eb',
+    'AI Matching': '#7c3aed',
+    'MSEs Notified': '#0891b2',
+    'Production': '#16a34a',
+    'Pickup Arranged': '#ea580c',
+    'Delivered': '#0d9488',
+    'Payment Done': '#b45309',
+    'Subsidy Applied': '#be185d',
+};
 
 const Dashboard = () => {
     const user = JSON.parse(localStorage.getItem('user') || '{}');
     const [orders, setOrders] = useState([]);
+    const [mses, setMses] = useState([]);
     const [loading, setLoading] = useState(true);
     const [form, setForm] = useState({ buyerName: '', product: '', quantityKg: '', location: '' });
     const [submitting, setSubmitting] = useState(false);
@@ -27,14 +33,29 @@ const Dashboard = () => {
             const { data } = await axios.get(`${API}/orders`);
             setOrders(data);
         } catch { /* backend may not be running */ }
-        finally { setLoading(false); }
     }, []);
 
+    const fetchMses = useCallback(async () => {
+        try {
+            const { data } = await axios.get(`${API}/mses`);
+            setMses(data);
+        } catch { /* backend may not be running */ }
+    }, []);
+
+    const fetchData = useCallback(async () => {
+        setLoading(true);
+        await Promise.all([fetchOrders(), fetchMses()]);
+        setLoading(false);
+    }, [fetchOrders, fetchMses]);
+
     useEffect(() => {
-        fetchOrders();
-        const interval = setInterval(fetchOrders, 5000);
+        fetchData();
+        const interval = setInterval(() => {
+            fetchOrders();
+            fetchMses();
+        }, 5000);
         return () => clearInterval(interval);
-    }, [fetchOrders]);
+    }, [fetchData, fetchOrders, fetchMses]);
 
     const handlePlace = async (e) => {
         e.preventDefault();
@@ -83,6 +104,9 @@ const Dashboard = () => {
                     <div className="tab-nav">
                         <button className={`tab-btn ${tab === 'orders' ? 'active' : ''}`} onClick={() => setTab('orders')}>
                             Orders ({orders.length})
+                        </button>
+                        <button className={`tab-btn ${tab === 'mses' ? 'active' : ''}`} onClick={() => setTab('mses')}>
+                            Registered MSEs ({mses.length})
                         </button>
                         <button className={`tab-btn ${tab === 'place' ? 'active' : ''}`} onClick={() => setTab('place')}>
                             Place New Order
@@ -178,6 +202,37 @@ const Dashboard = () => {
                             )}
                         </div>
                     )}
+                    {/* MSEs List */}
+                    {tab === 'mses' && (
+                        <div>
+                            {loading ? (
+                                <p className="empty-msg">Loading MSEs...</p>
+                            ) : mses.length === 0 ? (
+                                <div className="empty-msg">
+                                    No MSEs registered yet.
+                                </div>
+                            ) : (
+                                <div className="orders-list">
+                                    {mses.map(mse => (
+                                        <div key={mse._id} className="order-card">
+                                            <div className="order-top">
+                                                <div>
+                                                    <span className="order-buyer">{mse.name}</span>
+                                                    <span className="order-product"> · {mse.product} · {mse.district}</span>
+                                                </div>
+                                                <div className="order-actions">
+                                                    <span className="status-badge" style={{ background: '#f1f5f9', color: '#475569' }}>
+                                                        {mse.capacityKg}kg Capacity
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            <p className="order-mses">⭐ Rating: {mse.rating} · Available: {mse.availableKg}kg</p>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    )}
                 </div> {/* end dash-left */}
 
                 {/* RIGHT — Project Flowchart */}
@@ -244,6 +299,11 @@ const Dashboard = () => {
                 </div> {/* end dash-right */}
 
             </div> {/* end dash-columns */}
+
+            {/* Footer */}
+            <footer className="dash-footer">
+                <p>© 2026 MSE Aggregator Platform · <a href="https://github.com/chakriparella666-dev/MSEaggerator.git" target="_blank" rel="noreferrer">GitHub Repository</a></p>
+            </footer>
         </div>
     );
 };

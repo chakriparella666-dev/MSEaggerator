@@ -1,85 +1,250 @@
-import React, { useState, useEffect } from 'react';
-import KPISection from '../components/dashboard/KPISection';
-import ForecastChart from '../components/dashboard/ForecastChart';
-import ProductionPanel from '../components/dashboard/ProductionPanel';
-import InventoryPanel from '../components/dashboard/InventoryPanel';
-import AlertsSection from '../components/dashboard/AlertsSection';
-import CostOptimizationPanel from '../components/dashboard/CostOptimizationPanel';
+import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
+import './Dashboard.css';
+
+const API = 'http://localhost:5000/api/dashboard';
+
+const ORDER_STEPS = [
+    'Order Placed', 'AI Matching', 'MSEs Notified',
+    'Production', 'Pickup Arranged', 'Delivered', 'Payment Done', 'Subsidy Applied'
+];
+
+
+
+
 
 const Dashboard = () => {
-    const [data, setData] = useState(null);
-    const [loading, setLoading] = useState(true);
     const user = JSON.parse(localStorage.getItem('user') || '{}');
+    const [orders, setOrders] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [form, setForm] = useState({ buyerName: '', product: '', quantityKg: '', location: '' });
+    const [submitting, setSubmitting] = useState(false);
+    const [error, setError] = useState('');
+    const [tab, setTab] = useState('orders');
 
-    useEffect(() => {
-        const fetchData = async () => {
-            try {
-                const [kpiRes, forecastRes, inventoryRes, alertsRes] = await Promise.all([
-                    axios.get('http://localhost:5000/api/dashboard/kpis'),
-                    axios.get('http://localhost:5000/api/dashboard/forecast'),
-                    axios.get('http://localhost:5000/api/dashboard/inventory'),
-                    axios.get('http://localhost:5000/api/dashboard/alerts')
-                ]);
-
-                setData({
-                    kpis: kpiRes.data,
-                    forecast: forecastRes.data.data,
-                    inventory: inventoryRes.data.items,
-                    alerts: alertsRes.data
-                });
-                setLoading(false);
-            } catch (err) {
-                console.error('Error fetching dashboard data:', err);
-                // Fallback for demo if backend not running
-                setData({
-                    kpis: {
-                        demand: { value: 12500, label: 'Next 30-Day Demand', change: 12 },
-                        production: { value: 11000, label: 'Recommended Production', change: -5 },
-                        profit: { value: 45000, label: 'Expected Profit', change: 8 },
-                        risk: { value: 15, label: 'Stock-Out Risk %', change: 2 }
-                    },
-                    forecast: [],
-                    inventory: [],
-                    alerts: []
-                });
-                setLoading(false);
-            }
-        };
-
-        fetchData();
+    const fetchOrders = useCallback(async () => {
+        try {
+            const { data } = await axios.get(`${API}/orders`);
+            setOrders(data);
+        } catch { /* backend may not be running */ }
+        finally { setLoading(false); }
     }, []);
 
-    if (loading) return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>Loading Dashboard...</div>;
+    useEffect(() => {
+        fetchOrders();
+        const interval = setInterval(fetchOrders, 5000);
+        return () => clearInterval(interval);
+    }, [fetchOrders]);
+
+    const handlePlace = async (e) => {
+        e.preventDefault();
+        setError('');
+        setSubmitting(true);
+        try {
+            await axios.post(`${API}/orders`, { ...form, quantityKg: Number(form.quantityKg) });
+            setForm({ buyerName: '', product: '', quantityKg: '', location: '' });
+            setTab('orders');
+            fetchOrders();
+        } catch (err) {
+            setError(err.response?.data?.error || 'Failed to place order. Is the backend running?');
+        } finally { setSubmitting(false); }
+    };
+
+    const handleAdvance = async (id) => {
+        try { await axios.patch(`${API}/orders/${id}/status`); fetchOrders(); }
+        catch { /* ignore */ }
+    };
+
+    const handleDelete = async (id) => {
+        try { await axios.delete(`${API}/orders/${id}`); fetchOrders(); }
+        catch { /* ignore */ }
+    };
+
+    const stepIndex = (status) => ORDER_STEPS.indexOf(status);
 
     return (
-        <>
-            <div style={{ marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+        <div className="dash-wrap">
+            {/* Header */}
+            <div className="dash-header">
                 <div>
-                    <h1 style={{ fontSize: '1.75rem', fontWeight: 700, color: '#111' }}>Dashboard</h1>
-                    <p style={{ color: 'var(--text-muted)', fontSize: '0.925rem' }}>Welcome back, {user.name}. Here's the latest for your MSE.</p>
+                    <h1 className="dash-title">MSE Aggregator Dashboard</h1>
+                    <p className="dash-sub">Welcome, <strong>{user.name || 'User'}</strong></p>
                 </div>
-                <div style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>
-                    {new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-                </div>
+
             </div>
 
-            <KPISection data={data.kpis} />
+            {/* Two-column layout */}
+            <div className="dash-columns">
 
-            <div className="chart-grid">
-                <ForecastChart data={data.forecast} />
-                <CostOptimizationPanel />
-            </div>
+                {/* LEFT — Orders */}
+                <div className="dash-left">
 
-            <div className="chart-grid">
-                <ProductionPanel />
-                <InventoryPanel items={data.inventory} />
-            </div>
+                    {/* Tab Nav */}
+                    <div className="tab-nav">
+                        <button className={`tab-btn ${tab === 'orders' ? 'active' : ''}`} onClick={() => setTab('orders')}>
+                            Orders ({orders.length})
+                        </button>
+                        <button className={`tab-btn ${tab === 'place' ? 'active' : ''}`} onClick={() => setTab('place')}>
+                            Place New Order
+                        </button>
+                    </div>
 
-            <div style={{ marginTop: '24px' }}>
-                <AlertsSection alerts={data.alerts} />
-            </div>
-        </>
+                    {/* Place Order Form */}
+                    {tab === 'place' && (
+                        <form className="order-form" onSubmit={handlePlace}>
+                            <h3 className="form-title">Place Buyer Order</h3>
+                            {error && <div className="form-error">{error}</div>}
+                            <div className="form-grid">
+                                <div className="form-group">
+                                    <label>Buyer Name</label>
+                                    <input value={form.buyerName}
+                                        onChange={e => setForm({ ...form, buyerName: e.target.value })} required />
+                                </div>
+                                <div className="form-group">
+                                    <label>Product</label>
+                                    <input value={form.product}
+                                        onChange={e => setForm({ ...form, product: e.target.value })} required />
+                                </div>
+                                <div className="form-group">
+                                    <label>Quantity (kg)</label>
+                                    <input type="number" min="1" value={form.quantityKg}
+                                        onChange={e => setForm({ ...form, quantityKg: e.target.value })} required />
+                                </div>
+                                <div className="form-group">
+                                    <label>Delivery Location</label>
+                                    <input value={form.location}
+                                        onChange={e => setForm({ ...form, location: e.target.value })} required />
+                                </div>
+                            </div>
+                            <button type="submit" className="btn-submit" disabled={submitting}>
+                                {submitting ? 'Placing Order...' : 'Place Order →'}
+                            </button>
+                        </form>
+                    )}
+
+                    {/* Orders Table */}
+                    {tab === 'orders' && (
+                        <div>
+                            {loading ? (
+                                <p className="empty-msg">Loading orders...</p>
+                            ) : orders.length === 0 ? (
+                                <div className="empty-msg">
+                                    No orders yet. Click <strong>"Place New Order"</strong> to create the first one.
+                                </div>
+                            ) : (
+                                <div className="orders-list">
+                                    {orders.map(order => (
+                                        <div key={order._id} className="order-card">
+                                            <div className="order-top">
+                                                <div>
+                                                    <span className="order-buyer">{order.buyerName}</span>
+                                                    <span className="order-product"> · {order.product} · {order.quantityKg} kg · {order.location}</span>
+                                                </div>
+                                                <div className="order-actions">
+                                                    <span className="status-badge"
+                                                        style={{ background: STATUS_COLOR[order.status] + '20', color: STATUS_COLOR[order.status], border: `1px solid ${STATUS_COLOR[order.status]}` }}>
+                                                        {order.status}
+                                                    </span>
+                                                    {stepIndex(order.status) < ORDER_STEPS.length - 1 && (
+                                                        <button
+                                                            className="btn-next"
+                                                            onClick={() => handleAdvance(order._id)}
+                                                            title={`Advance to ${ORDER_STEPS[stepIndex(order.status) + 1]}`}
+                                                        >
+                                                            Next Step →
+                                                        </button>
+                                                    )}
+                                                    <button className="btn-del" onClick={() => handleDelete(order._id)}>✕</button>
+                                                </div>
+                                            </div>
+
+                                            {/* Progress Bar */}
+                                            <div className="progress-bar">
+                                                {ORDER_STEPS.map((step, idx) => (
+                                                    <div
+                                                        key={step}
+                                                        className={`progress-step ${idx < stepIndex(order.status) ? 'done' : idx === stepIndex(order.status) ? 'current' : ''}`}
+                                                        title={step}
+                                                    />
+                                                ))}
+                                            </div>
+
+                                            {order.assignedMSEs?.length > 0 && (
+                                                <p className="order-mses">🏭 Assigned MSEs: {order.assignedMSEs.join(', ')}</p>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div> {/* end dash-left */}
+
+                {/* RIGHT — Project Flowchart */}
+                <div className="dash-right">
+                    <h3 className="flow-title">Project Flow</h3>
+
+                    <div className="fc-wrap">
+                        <div className="fc-node">
+                            <div className="fc-content">
+                                <div className="fc-label">Buyer</div>
+                                <div className="fc-desc">Places order</div>
+                            </div>
+                        </div>
+
+                        <div className="fc-node">
+                            <div className="fc-content">
+                                <div className="fc-label">AI Platform</div>
+                                <div className="fc-desc">Matches demand</div>
+                            </div>
+                        </div>
+
+                        <div className="fc-node">
+                            <div className="fc-content">
+                                <div className="fc-label">MSEs</div>
+                                <div className="fc-desc">Produce goods</div>
+                            </div>
+                        </div>
+
+                        <div className="fc-node">
+                            <div className="fc-content">
+                                <div className="fc-label">Inventory</div>
+                                <div className="fc-desc">Tracks stock</div>
+                            </div>
+                        </div>
+
+                        <div className="fc-node">
+                            <div className="fc-content">
+                                <div className="fc-label">Logistics</div>
+                                <div className="fc-desc">Optimises routes</div>
+                            </div>
+                        </div>
+
+                        <div className="fc-node">
+                            <div className="fc-content">
+                                <div className="fc-label">Delivery</div>
+                                <div className="fc-desc">Consolidated delivery</div>
+                            </div>
+                        </div>
+
+                        <div className="fc-node">
+                            <div className="fc-content">
+                                <div className="fc-label">Payment</div>
+                                <div className="fc-desc">Splits payment</div>
+                            </div>
+                        </div>
+
+                        <div className="fc-node">
+                            <div className="fc-content">
+                                <div className="fc-label">Govt Schemes</div>
+                                <div className="fc-desc">Applies subsidy</div>
+                            </div>
+                        </div>
+                    </div>
+                </div> {/* end dash-right */}
+
+            </div> {/* end dash-columns */}
+        </div>
     );
 };
 

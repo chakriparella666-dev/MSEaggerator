@@ -1,56 +1,96 @@
 const express = require('express');
 const router = express.Router();
+const Order = require('../models/Order');
+const MSE = require('../models/MSE');
 
-// Mock middleware for role check
-const checkRole = (roles) => (req, res, next) => {
-    // In a real app, you'd decode JWT here
-    // For now, let the frontend handle access logic but keep backend ready
-    next();
-};
+// ──── ORDERS ────
 
-// ──── KPI Data ────
-router.get('/kpis', (req, res) => {
-    res.json({
-        demand: { value: 12500, label: 'Next 30-Day Demand', change: 12, icon: 'trending-up' },
-        production: { value: 11000, label: 'Recommended Production', change: -5, icon: 'factory' },
-        profit: { value: 45000, label: 'Expected Profit', change: 8, icon: 'dollar-sign' },
-        risk: { value: 15, label: 'Stock-Out Risk %', change: 2, icon: 'alert-triangle' }
-    });
+// GET all orders (newest first)
+router.get('/orders', async (req, res) => {
+    try {
+        const orders = await Order.find().sort({ createdAt: -1 });
+        res.json(orders);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
-// ──── Forecast Data ────
-router.get('/forecast', (req, res) => {
-    res.json({
-        data: [
-            { date: '2024-01', historical: 4000, predicted: 4000 },
-            { date: '2024-02', historical: 3000, predicted: 3200 },
-            { date: '2024-03', historical: 2000, predicted: 2400 },
-            { date: '2024-04', historical: 2780, predicted: 3000 },
-            { date: '2024-05', historical: 1890, predicted: 2100 },
-            { date: '2024-06', historical: 2390, predicted: 2500 },
-            { date: '2024-07', historical: 3490, predicted: 3800 },
-        ]
-    });
+// POST place a new order
+router.post('/orders', async (req, res) => {
+    try {
+        const { buyerName, product, quantityKg, location } = req.body;
+        if (!buyerName || !product || !quantityKg || !location) {
+            return res.status(400).json({ error: 'All fields are required' });
+        }
+
+        // Find available MSEs for this product
+        const mses = await MSE.find({
+            product: { $regex: product, $options: 'i' },
+            availableKg: { $gt: 0 }
+        });
+        const assignedMSEs = mses.map(m => m.name);
+
+        const order = new Order({ buyerName, product, quantityKg, location, assignedMSEs });
+        await order.save();
+        res.status(201).json(order);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
-// ──── Inventory Data ────
-router.get('/inventory', (req, res) => {
-    res.json({
-        items: [
-            { name: 'Raw Material A', current: 500, reorder: 200, cost: 50, risk: 'Low' },
-            { name: 'Raw Material B', current: 150, reorder: 200, cost: 30, risk: 'Medium' },
-            { name: 'Raw Material C', current: 50, reorder: 100, cost: 80, risk: 'High' }
-        ]
-    });
+// PATCH advance order to next step
+router.patch('/orders/:id/status', async (req, res) => {
+    try {
+        const order = await Order.findById(req.params.id);
+        if (!order) return res.status(404).json({ error: 'Order not found' });
+        order.advance();
+        await order.save();
+        res.json(order);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
-// ──── Alerts ────
-router.get('/alerts', (req, res) => {
-    res.json([
-        { id: 1, title: 'Stock-Out Alert', description: 'Raw Material C will run out in 3 days.', level: 'Critical', time: '2 hours ago' },
-        { id: 2, title: 'Demand Spike', description: '20% increase in demand predicted for next week.', level: 'Warning', time: '5 hours ago' },
-        { id: 3, title: 'Price Update', description: 'Supplier prices for Material A decreased by 5%.', level: 'Info', time: '1 day ago' }
-    ]);
+// DELETE an order
+router.delete('/orders/:id', async (req, res) => {
+    try {
+        await Order.findByIdAndDelete(req.params.id);
+        res.json({ message: 'Deleted' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ──── MSEs ────
+
+// GET all MSEs
+router.get('/mses', async (req, res) => {
+    try {
+        const mses = await MSE.find().sort({ registeredAt: -1 });
+        res.json(mses);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// POST register a new MSE
+router.post('/mses', async (req, res) => {
+    try {
+        const { name, product, district, capacityKg, availableKg } = req.body;
+        if (!name || !product || !district || !capacityKg || !availableKg) {
+            return res.status(400).json({ error: 'All fields are required' });
+        }
+        const mse = new MSE({ name, product, district, capacityKg, availableKg });
+        await mse.save();
+        res.status(201).json(mse);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ──── STEP LIST ────
+router.get('/steps', (req, res) => {
+    res.json(Order.schema.path('status').enumValues);
 });
 
 module.exports = router;

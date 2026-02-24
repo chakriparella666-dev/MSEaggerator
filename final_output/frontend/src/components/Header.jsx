@@ -1,5 +1,4 @@
-import React from 'react';
-import { Bell, User, LogOut } from 'lucide-react';
+import { User, LogOut } from 'lucide-react';
 
 const Header = ({ user, onLogout }) => {
     return (
@@ -22,22 +21,7 @@ const Header = ({ user, onLogout }) => {
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-                <input
-                    type="text"
-                    placeholder="Search products, analytics..."
-                    style={{
-                        padding: '8px 16px',
-                        width: '300px',
-                        borderRadius: '4px',
-                        border: '1px solid #ddd',
-                        fontSize: '0.875rem',
-                        outline: 'none'
-                    }}
-                />
 
-                <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
-                    <Bell size={20} />
-                </button>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
                     <span style={{ fontSize: '0.875rem', fontWeight: 500, color: 'var(--text-main)' }}>Hello, {user?.name || 'User'}</span>
